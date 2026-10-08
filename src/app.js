@@ -53,17 +53,16 @@ export function createApp({ database, jwtSecret, clientOrigins = [] }) {
       const passwordHash = await hashPassword(password);
       let result;
       try {
-        result = database.prepare(
-          'INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)',
-        ).run(name, email, passwordHash);
+        result = await database.createUser({ name, email, passwordHash });
       } catch (error) {
-        if (error.code === 'ERR_SQLITE_ERROR' && error.message.includes('UNIQUE constraint failed')) {
+        if ((error.code === 'ERR_SQLITE_ERROR' && error.message.includes('UNIQUE constraint failed'))
+          || error.code === '23505') {
           return response.status(409).json({ error: 'An account with this email already exists' });
         }
         throw error;
       }
 
-      const user = { id: Number(result.lastInsertRowid), name, email };
+      const user = { id: result.id, name: result.name, email: result.email };
       return response.status(201).json({
         user,
         token: jwt.sign({}, jwtSecret, { subject: String(user.id), expiresIn: '2h' }),
@@ -79,9 +78,7 @@ export function createApp({ database, jwtSecret, clientOrigins = [] }) {
         ? request.body.email.trim().toLowerCase()
         : '';
       const password = request.body.password;
-      const userRecord = database.prepare(
-        'SELECT id, name, email, password_hash FROM users WHERE email = ?',
-      ).get(email);
+      const userRecord = await database.findUserByEmail(email);
 
       if (!userRecord || typeof password !== 'string'
         || !(await verifyPassword(password, userRecord.password_hash))) {
@@ -98,34 +95,31 @@ export function createApp({ database, jwtSecret, clientOrigins = [] }) {
     }
   });
 
-  app.get('/api/blogs', (request, response) => {
-    const blogs = database.prepare(`
-      SELECT blogs.id, blogs.title, blogs.content, blogs.excerpt, blogs.created_at,
-             users.id AS author_id, users.name AS author_name
-      FROM blogs JOIN users ON users.id = blogs.author_id
-      ORDER BY blogs.id DESC LIMIT 50
-    `).all();
-    response.json({ blogs });
+  app.get('/api/blogs', async (request, response, next) => {
+    try {
+      const blogs = await database.listBlogs();
+      return response.json({ blogs });
+    } catch (error) {
+      return next(error);
+    }
   });
 
-  app.get('/api/blogs/:id', (request, response) => {
-    const id = Number(request.params.id);
-    if (!Number.isSafeInteger(id) || id < 1) {
+  app.get('/api/blogs/:id', async (request, response, next) => {
+    const id = request.params.id;
+    if (!/^(?:[1-9]\d*|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.test(id)) {
       return response.status(404).json({ error: 'Blog post not found' });
     }
 
-    const blog = database.prepare(`
-      SELECT blogs.id, blogs.title, blogs.content, blogs.excerpt, blogs.created_at,
-             users.id AS author_id, users.name AS author_name
-      FROM blogs JOIN users ON users.id = blogs.author_id
-      WHERE blogs.id = ?
-    `).get(id);
-
-    if (!blog) return response.status(404).json({ error: 'Blog post not found' });
-    return response.json({ blog });
+    try {
+      const blog = await database.getBlogById(/^\d+$/.test(id) ? Number(id) : id);
+      if (!blog) return response.status(404).json({ error: 'Blog post not found' });
+      return response.json({ blog });
+    } catch (error) {
+      return next(error);
+    }
   });
 
-  app.post('/api/blogs', requireAuth(jwtSecret), (request, response) => {
+  app.post('/api/blogs', requireAuth(jwtSecret), async (request, response, next) => {
     const title = typeof request.body.title === 'string' ? request.body.title.trim() : '';
     const content = typeof request.body.content === 'string' ? request.body.content.trim() : '';
     const suppliedExcerpt = typeof request.body.excerpt === 'string'
@@ -140,17 +134,17 @@ export function createApp({ database, jwtSecret, clientOrigins = [] }) {
     }
 
     const excerpt = suppliedExcerpt || content.slice(0, 240);
-    const result = database.prepare(
-      'INSERT INTO blogs (author_id, title, content, excerpt) VALUES (?, ?, ?, ?)',
-    ).run(request.user.id, title, content, excerpt);
-    const blog = database.prepare(`
-      SELECT blogs.id, blogs.title, blogs.content, blogs.excerpt, blogs.created_at,
-             users.id AS author_id, users.name AS author_name
-      FROM blogs JOIN users ON users.id = blogs.author_id
-      WHERE blogs.id = ?
-    `).get(Number(result.lastInsertRowid));
-
-    return response.status(201).json({ blog });
+    try {
+      const blog = await database.createBlog({
+        authorId: request.user.id,
+        title,
+        content,
+        excerpt,
+      });
+      return response.status(201).json({ blog });
+    } catch (error) {
+      return next(error);
+    }
   });
 
   app.use((error, request, response, next) => {

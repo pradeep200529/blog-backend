@@ -67,4 +67,8 @@ test('requires authentication to create a blog and returns it publicly', async (
   assert.equal(listed.status, 200);
   assert.equal(listed.body.blogs.length, 1);
   assert.equal(listed.body.blogs[0].title, 'A first post');
+
+  const detail = await request(app).get(`/api/blogs/${created.body.blog.id}`);
+  assert.equal(detail.status, 200);
+  assert.equal(detail.body.blog.content, 'A longer story starts here.');
 });

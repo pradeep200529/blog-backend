@@ -1,6 +1,6 @@
 # Blog Backend
 
-REST API for user accounts and blog posts, built with Node.js, Express, and SQLite.
+REST API for user accounts and blog posts, built with Node.js and Express. It supports Supabase for managed persistence and SQLite for local development and tests.
 
 ## Requirements
 
@@ -20,7 +20,35 @@ Set `JWT_SECRET` in `.env` to a random secret at least 32 characters long, then 
 npm run dev
 ```
 
-The API listens on `http://localhost:3000`. SQLite creates `data/blog.sqlite` automatically. Add your frontend URL to `CLIENT_ORIGIN` if it is not `http://localhost:5173`; multiple origins can be comma-separated.
+The API listens on `http://localhost:3000`. Without Supabase settings, SQLite creates `data/blog.sqlite` automatically. Add your frontend URL to `CLIENT_ORIGIN` if it is not `http://localhost:5173`; multiple origins can be comma-separated.
+
+## Supabase database
+
+Create a Supabase project and run this SQL in its SQL Editor:
+
+```sql
+create table public.users (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  email text not null unique,
+  password_hash text not null,
+  created_at timestamptz not null default now()
+);
+
+create table public.blogs (
+  id uuid primary key default gen_random_uuid(),
+  author_id uuid not null references public.users(id) on delete cascade,
+  title text not null,
+  content text not null,
+  excerpt text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.users enable row level security;
+alter table public.blogs enable row level security;
+```
+
+Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the backend `.env` to enable Supabase. Both must be set; otherwise the app uses SQLite. Keep the service-role key secret and only on the server. Never put it in frontend code or commit it. Passwords are scrypt-hashed before storage. Row-level security is enabled, and the backend uses the service role to perform its API operations.
 
 ## Endpoints
 
@@ -30,7 +58,7 @@ The API listens on `http://localhost:3000`. SQLite creates `data/blog.sqlite` au
 | `POST` | `/api/auth/register` | Public | Register a user |
 | `POST` | `/api/auth/login` | Public | Log in and receive a JWT |
 | `GET` | `/api/blogs` | Public | List the latest 50 posts |
-| `GET` | `/api/blogs/:id` | Public | Get one post |
+| `GET` | `/api/blogs/:id` | Public | Get one post by its database ID |
 | `POST` | `/api/blogs` | JWT required | Create a post |
 
 Registration accepts `{ "name": "Avery", "email": "avery@example.com", "password": "at-least-8-chars" }`. Login accepts `{ "email": "avery@example.com", "password": "at-least-8-chars" }`. Create a blog with `{ "title": "A title", "content": "The post body", "excerpt": "Optional summary" }` and an `Authorization: Bearer <token>` header. Passwords are hashed with Node's scrypt; JWTs expire after two hours.
@@ -60,6 +88,8 @@ const createResponse = await fetch(`${API_URL}/api/blogs`, {
 ```
 
 Registration uses the same JSON request pattern at `/api/auth/register`. Public posts can be loaded from `/api/blogs` without a token. Handle non-2xx responses by checking the JSON `error` field.
+
+For an individual post detail view, request `GET /api/blogs/:id`; the response is `{ "blog": { ... } }`, including the full content and author details. Supabase uses UUID IDs, while the local SQLite adapter uses integer IDs.
 
 ## Tests
 

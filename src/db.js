@@ -32,5 +32,42 @@ export function createDatabase(databasePath) {
     );
   `);
 
-  return database;
+  return {
+    async findUserByEmail(email) {
+      return database.prepare(
+        'SELECT id, name, email, password_hash FROM users WHERE email = ?',
+      ).get(email) ?? null;
+    },
+    async createUser({ name, email, passwordHash }) {
+      const result = database.prepare(
+        'INSERT INTO users (name, email, password_hash) VALUES (?, ?, ?)',
+      ).run(name, email, passwordHash);
+      return { id: Number(result.lastInsertRowid), name, email };
+    },
+    async listBlogs() {
+      return database.prepare(`
+        SELECT blogs.id, blogs.title, blogs.content, blogs.excerpt, blogs.created_at,
+               users.id AS author_id, users.name AS author_name
+        FROM blogs JOIN users ON users.id = blogs.author_id
+        ORDER BY blogs.id DESC LIMIT 50
+      `).all();
+    },
+    async getBlogById(id) {
+      return database.prepare(`
+        SELECT blogs.id, blogs.title, blogs.content, blogs.excerpt, blogs.created_at,
+               users.id AS author_id, users.name AS author_name
+        FROM blogs JOIN users ON users.id = blogs.author_id
+        WHERE blogs.id = ?
+      `).get(id) ?? null;
+    },
+    async createBlog({ authorId, title, content, excerpt }) {
+      const result = database.prepare(
+        'INSERT INTO blogs (author_id, title, content, excerpt) VALUES (?, ?, ?, ?)',
+      ).run(authorId, title, content, excerpt);
+      return this.getBlogById(Number(result.lastInsertRowid));
+    },
+    close() {
+      database.close();
+    },
+  };
 }
