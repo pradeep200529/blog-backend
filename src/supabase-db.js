@@ -22,6 +22,15 @@ export function createSupabaseDatabase({ url, serviceRoleKey }) {
   });
 
   return {
+    async getUserById(id) {
+      const { data, error } = await client
+        .from('users')
+        .select('id,name,email,created_at')
+        .eq('id', id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
     async findUserByEmail(email) {
       const { data, error } = await client
         .from('users')
@@ -44,6 +53,16 @@ export function createSupabaseDatabase({ url, serviceRoleKey }) {
       const { data, error } = await client
         .from('blogs')
         .select(blogFields)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (error) throw error;
+      return data.map(withAuthor);
+    },
+    async listBlogsByAuthor(authorId) {
+      const { data, error } = await client
+        .from('blogs')
+        .select(blogFields)
+        .eq('author_id', authorId)
         .order('created_at', { ascending: false })
         .limit(50);
       if (error) throw error;
@@ -88,6 +107,29 @@ export function createSupabaseDatabase({ url, serviceRoleKey }) {
         .maybeSingle();
       if (error) throw error;
       return Boolean(data);
+    },
+    async isTokenRevoked(tokenId) {
+      const { data, error } = await client
+        .from('revoked_tokens')
+        .select('token_id')
+        .eq('token_id', tokenId)
+        .gt('expires_at', Math.floor(Date.now() / 1000))
+        .maybeSingle();
+      if (error) throw error;
+      return Boolean(data);
+    },
+    async revokeToken({ tokenId, expiresAt }) {
+      const now = Math.floor(Date.now() / 1000);
+      const { error: cleanupError } = await client
+        .from('revoked_tokens')
+        .delete()
+        .lte('expires_at', now);
+      if (cleanupError) throw cleanupError;
+
+      const { error } = await client
+        .from('revoked_tokens')
+        .upsert({ token_id: tokenId, expires_at: expiresAt });
+      if (error) throw error;
     },
     close() {},
   };

@@ -44,8 +44,14 @@ create table public.blogs (
   created_at timestamptz not null default now()
 );
 
+create table public.revoked_tokens (
+  token_id text primary key,
+  expires_at bigint not null
+);
+
 alter table public.users enable row level security;
 alter table public.blogs enable row level security;
+alter table public.revoked_tokens enable row level security;
 ```
 
 Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the backend `.env` to enable Supabase. Both must be set; otherwise the app uses SQLite. Keep the service-role key secret and only on the server. Never put it in frontend code or commit it. Passwords are scrypt-hashed before storage. Row-level security is enabled, and the backend uses the service role to perform its API operations.
@@ -57,13 +63,18 @@ Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the backend `.env` to enab
 | `GET` | `/api/health` | Public | Health check |
 | `POST` | `/api/auth/register` | Public | Register a user |
 | `POST` | `/api/auth/login` | Public | Log in and receive a JWT |
+| `GET` | `/api/auth/me` | JWT required | Get the current user's profile |
+| `POST` | `/api/auth/logout` | JWT required | Revoke the current JWT |
+| `GET` | `/api/dashboard` | JWT required | Get the current user's profile and latest 50 posts |
 | `GET` | `/api/blogs` | Public | List the latest 50 posts |
 | `GET` | `/api/blogs/:id` | Public | Get one post by its database ID |
 | `POST` | `/api/blogs` | JWT required | Create a post |
 | `PUT` | `/api/blogs/:id` | Author JWT required | Replace a post's title, content, and optional excerpt |
 | `DELETE` | `/api/blogs/:id` | Author JWT required | Delete one of your posts |
 
-Registration accepts `{ "name": "Avery", "email": "avery@example.com", "password": "at-least-8-chars" }`. Login accepts `{ "email": "avery@example.com", "password": "at-least-8-chars" }`. Create a blog with `{ "title": "A title", "content": "The post body", "excerpt": "Optional summary" }` and an `Authorization: Bearer <token>` header. Passwords are hashed with Node's scrypt; JWTs expire after two hours.
+Registration accepts `{ "name": "Avery", "email": "avery@example.com", "password": "at-least-8-chars" }`. Login accepts `{ "email": "avery@example.com", "password": "at-least-8-chars" }`. Create a blog with `{ "title": "A title", "content": "The post body", "excerpt": "Optional summary" }` and an `Authorization: Bearer <token>` header. Passwords are hashed with Node's scrypt; JWTs expire after two hours and include unique IDs so logout can revoke them.
+
+The dashboard response includes only posts authored by the authenticated user. Send the bearer token to `GET /api/auth/me` for the profile or `GET /api/dashboard` for the profile and posts. Call `POST /api/auth/logout` to revoke that token, then remove it from the client; subsequent protected requests using it receive `401`.
 
 Update a post with `PUT /api/blogs/:id` and the same JSON fields as creation. Title and content are required; if excerpt is omitted or empty, it is generated from the first 240 characters of the content. Only the post's author can update or delete it. A successful delete returns `204 No Content`.
 

@@ -1,8 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
-import jwt from 'jsonwebtoken';
-import { hashPassword, requireAuth, verifyPassword } from './auth.js';
+import { createToken, hashPassword, requireAuth, verifyPassword } from './auth.js';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -65,7 +64,7 @@ export function createApp({ database, jwtSecret, clientOrigins = [] }) {
       const user = { id: result.id, name: result.name, email: result.email };
       return response.status(201).json({
         user,
-        token: jwt.sign({}, jwtSecret, { subject: String(user.id), expiresIn: '2h' }),
+        token: createToken(user.id, jwtSecret),
       });
     } catch (error) {
       return next(error);
@@ -88,8 +87,38 @@ export function createApp({ database, jwtSecret, clientOrigins = [] }) {
       const user = { id: userRecord.id, name: userRecord.name, email: userRecord.email };
       return response.json({
         user,
-        token: jwt.sign({}, jwtSecret, { subject: String(user.id), expiresIn: '2h' }),
+        token: createToken(user.id, jwtSecret),
       });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  app.get('/api/auth/me', requireAuth(jwtSecret, database), async (request, response, next) => {
+    try {
+      const user = await database.getUserById(request.user.id);
+      if (!user) return response.status(401).json({ error: 'User account no longer exists' });
+      return response.json({ user });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  app.post('/api/auth/logout', requireAuth(jwtSecret, database), async (request, response, next) => {
+    try {
+      await database.revokeToken(request.auth);
+      return response.status(204).end();
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  app.get('/api/dashboard', requireAuth(jwtSecret, database), async (request, response, next) => {
+    try {
+      const user = await database.getUserById(request.user.id);
+      if (!user) return response.status(401).json({ error: 'User account no longer exists' });
+      const blogs = await database.listBlogsByAuthor(request.user.id);
+      return response.json({ user, blogs });
     } catch (error) {
       return next(error);
     }
@@ -119,7 +148,7 @@ export function createApp({ database, jwtSecret, clientOrigins = [] }) {
     }
   });
 
-  app.put('/api/blogs/:id', requireAuth(jwtSecret), async (request, response, next) => {
+  app.put('/api/blogs/:id', requireAuth(jwtSecret, database), async (request, response, next) => {
     const id = request.params.id;
     if (!/^(?:[1-9]\d*|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.test(id)) {
       return response.status(404).json({ error: 'Blog post not found' });
@@ -153,7 +182,7 @@ export function createApp({ database, jwtSecret, clientOrigins = [] }) {
     }
   });
 
-  app.delete('/api/blogs/:id', requireAuth(jwtSecret), async (request, response, next) => {
+  app.delete('/api/blogs/:id', requireAuth(jwtSecret, database), async (request, response, next) => {
     const id = request.params.id;
     if (!/^(?:[1-9]\d*|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.test(id)) {
       return response.status(404).json({ error: 'Blog post not found' });
@@ -171,7 +200,7 @@ export function createApp({ database, jwtSecret, clientOrigins = [] }) {
     }
   });
 
-  app.post('/api/blogs', requireAuth(jwtSecret), async (request, response, next) => {
+  app.post('/api/blogs', requireAuth(jwtSecret, database), async (request, response, next) => {
     const title = typeof request.body.title === 'string' ? request.body.title.trim() : '';
     const content = typeof request.body.content === 'string' ? request.body.content.trim() : '';
     const suppliedExcerpt = typeof request.body.excerpt === 'string'

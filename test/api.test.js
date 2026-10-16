@@ -116,3 +116,45 @@ test('updates and deletes a blog only for its authenticated author', async () =>
   assert.equal(deleted.status, 204);
   assert.equal(missing.status, 404);
 });
+
+test('serves a private profile and dashboard and revokes the token on logout', async () => {
+  const unauthorizedProfile = await request(app).get('/api/auth/me');
+  const unauthorizedDashboard = await request(app).get('/api/dashboard');
+  assert.equal(unauthorizedProfile.status, 401);
+  assert.equal(unauthorizedDashboard.status, 401);
+
+  const profile = await request(app)
+    .get('/api/auth/me')
+    .set('Authorization', `Bearer ${token}`);
+  assert.equal(profile.status, 200);
+  assert.equal(profile.body.user.name, 'Avery Writer');
+  assert.equal(profile.body.user.email, 'avery@example.com');
+  assert.equal(Object.hasOwn(profile.body.user, 'password_hash'), false);
+
+  const otherUser = await request(app)
+    .post('/api/auth/register')
+    .send({ name: 'Morgan Reader', email: 'morgan@example.com', password: 'secure-reader-9' });
+  const otherPost = await request(app)
+    .post('/api/blogs')
+    .set('Authorization', `Bearer ${otherUser.body.token}`)
+    .send({ title: 'Another user post', content: 'This is not Avery\'s post.' });
+  assert.equal(otherPost.status, 201);
+
+  const dashboard = await request(app)
+    .get('/api/dashboard')
+    .set('Authorization', `Bearer ${token}`);
+  assert.equal(dashboard.status, 200);
+  assert.equal(dashboard.body.user.id, profile.body.user.id);
+  assert.ok(dashboard.body.blogs.length > 0);
+  assert.ok(dashboard.body.blogs.every((blog) => blog.author_id === profile.body.user.id));
+  assert.equal(dashboard.body.blogs.some((blog) => blog.id === otherPost.body.blog.id), false);
+
+  const logout = await request(app)
+    .post('/api/auth/logout')
+    .set('Authorization', `Bearer ${token}`);
+  const afterLogout = await request(app)
+    .get('/api/dashboard')
+    .set('Authorization', `Bearer ${token}`);
+  assert.equal(logout.status, 204);
+  assert.equal(afterLogout.status, 401);
+});

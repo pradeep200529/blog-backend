@@ -30,9 +30,19 @@ export function createDatabase(databasePath) {
       excerpt TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS revoked_tokens (
+      token_id TEXT PRIMARY KEY,
+      expires_at INTEGER NOT NULL
+    );
   `);
 
   return {
+    async getUserById(id) {
+      return database.prepare(
+        'SELECT id, name, email, created_at FROM users WHERE id = ?',
+      ).get(id) ?? null;
+    },
     async findUserByEmail(email) {
       return database.prepare(
         'SELECT id, name, email, password_hash FROM users WHERE email = ?',
@@ -51,6 +61,15 @@ export function createDatabase(databasePath) {
         FROM blogs JOIN users ON users.id = blogs.author_id
         ORDER BY blogs.id DESC LIMIT 50
       `).all();
+    },
+    async listBlogsByAuthor(authorId) {
+      return database.prepare(`
+        SELECT blogs.id, blogs.title, blogs.content, blogs.excerpt, blogs.created_at,
+               users.id AS author_id, users.name AS author_name
+        FROM blogs JOIN users ON users.id = blogs.author_id
+        WHERE blogs.author_id = ?
+        ORDER BY blogs.id DESC LIMIT 50
+      `).all(authorId);
     },
     async getBlogById(id) {
       return database.prepare(`
@@ -79,6 +98,19 @@ export function createDatabase(databasePath) {
         'DELETE FROM blogs WHERE id = ? AND author_id = ?',
       ).run(id, authorId);
       return result.changes > 0;
+    },
+    async isTokenRevoked(tokenId) {
+      const now = Math.floor(Date.now() / 1000);
+      return Boolean(database.prepare(
+        'SELECT 1 FROM revoked_tokens WHERE token_id = ? AND expires_at > ?',
+      ).get(tokenId, now));
+    },
+    async revokeToken({ tokenId, expiresAt }) {
+      const now = Math.floor(Date.now() / 1000);
+      database.prepare('DELETE FROM revoked_tokens WHERE expires_at <= ?').run(now);
+      database.prepare(
+        'INSERT INTO revoked_tokens (token_id, expires_at) VALUES (?, ?)',
+      ).run(tokenId, expiresAt);
     },
     close() {
       database.close();
