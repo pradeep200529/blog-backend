@@ -10,6 +10,20 @@ let token;
 
 after(() => database.close());
 
+test('serves the full-stack app and its static assets', async () => {
+  const page = await request(app).get('/');
+  const stylesheet = await request(app).get('/styles.css');
+  const script = await request(app).get('/app.js');
+
+  assert.equal(page.status, 200);
+  assert.match(page.headers['content-type'], /text\/html/);
+  assert.match(page.text, /Margin Notes/);
+  assert.equal(stylesheet.status, 200);
+  assert.match(stylesheet.headers['content-type'], /text\/css/);
+  assert.equal(script.status, 200);
+  assert.match(script.headers['content-type'], /javascript/);
+});
+
 test('registers a user and returns an access token', async () => {
   const response = await request(app)
     .post('/api/auth/register')

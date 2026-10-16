@@ -1,6 +1,7 @@
 import cors from 'cors';
 import express from 'express';
 import helmet from 'helmet';
+import { fileURLToPath } from 'node:url';
 import { createToken, hashPassword, requireAuth, verifyPassword } from './auth.js';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -29,6 +30,7 @@ export function createApp({ database, jwtSecret, clientOrigins = [] }) {
     }
     next();
   });
+  app.use(express.static(fileURLToPath(new URL('../public', import.meta.url))));
 
   app.get('/api/health', (request, response) => {
     response.json({ status: 'ok' });

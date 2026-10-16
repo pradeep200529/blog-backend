@@ -15,7 +15,7 @@ const database = hasSupabaseConfig
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
   })
   : createDatabase(process.env.DATABASE_PATH || './data/blog.sqlite');
-const clientOrigins = (process.env.CLIENT_ORIGIN || 'http://localhost:5173')
+const clientOrigins = (process.env.CLIENT_ORIGIN || process.env.RENDER_EXTERNAL_URL || 'http://localhost:3000')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
