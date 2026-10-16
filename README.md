@@ -60,8 +60,12 @@ Set `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the backend `.env` to enab
 | `GET` | `/api/blogs` | Public | List the latest 50 posts |
 | `GET` | `/api/blogs/:id` | Public | Get one post by its database ID |
 | `POST` | `/api/blogs` | JWT required | Create a post |
+| `PUT` | `/api/blogs/:id` | Author JWT required | Replace a post's title, content, and optional excerpt |
+| `DELETE` | `/api/blogs/:id` | Author JWT required | Delete one of your posts |
 
 Registration accepts `{ "name": "Avery", "email": "avery@example.com", "password": "at-least-8-chars" }`. Login accepts `{ "email": "avery@example.com", "password": "at-least-8-chars" }`. Create a blog with `{ "title": "A title", "content": "The post body", "excerpt": "Optional summary" }` and an `Authorization: Bearer <token>` header. Passwords are hashed with Node's scrypt; JWTs expire after two hours.
+
+Update a post with `PUT /api/blogs/:id` and the same JSON fields as creation. Title and content are required; if excerpt is omitted or empty, it is generated from the first 240 characters of the content. Only the post's author can update or delete it. A successful delete returns `204 No Content`.
 
 ## Connect a frontend
 

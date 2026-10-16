@@ -72,3 +72,47 @@ test('requires authentication to create a blog and returns it publicly', async (
   assert.equal(detail.status, 200);
   assert.equal(detail.body.blog.content, 'A longer story starts here.');
 });
+
+test('updates and deletes a blog only for its authenticated author', async () => {
+  const created = await request(app)
+    .post('/api/blogs')
+    .set('Authorization', `Bearer ${token}`)
+    .send({ title: 'Editable post', content: 'The original content.' });
+  const blogId = created.body.blog.id;
+
+  const unauthorizedUpdate = await request(app)
+    .put(`/api/blogs/${blogId}`)
+    .send({ title: 'Changed post', content: 'Changed content.' });
+  const unauthorizedDelete = await request(app).delete(`/api/blogs/${blogId}`);
+  assert.equal(unauthorizedUpdate.status, 401);
+  assert.equal(unauthorizedDelete.status, 401);
+
+  const otherUser = await request(app)
+    .post('/api/auth/register')
+    .send({ name: 'Jordan Reader', email: 'jordan@example.com', password: 'another-horse-8' });
+  const forbiddenUpdate = await request(app)
+    .put(`/api/blogs/${blogId}`)
+    .set('Authorization', `Bearer ${otherUser.body.token}`)
+    .send({ title: 'Changed post', content: 'Changed content.' });
+  const forbiddenDelete = await request(app)
+    .delete(`/api/blogs/${blogId}`)
+    .set('Authorization', `Bearer ${otherUser.body.token}`);
+  assert.equal(forbiddenUpdate.status, 404);
+  assert.equal(forbiddenDelete.status, 404);
+
+  const updated = await request(app)
+    .put(`/api/blogs/${blogId}`)
+    .set('Authorization', `Bearer ${token}`)
+    .send({ title: 'Updated post', content: 'The revised content.' });
+  assert.equal(updated.status, 200);
+  assert.equal(updated.body.blog.title, 'Updated post');
+  assert.equal(updated.body.blog.content, 'The revised content.');
+  assert.equal(updated.body.blog.excerpt, 'The revised content.');
+
+  const deleted = await request(app)
+    .delete(`/api/blogs/${blogId}`)
+    .set('Authorization', `Bearer ${token}`);
+  const missing = await request(app).get(`/api/blogs/${blogId}`);
+  assert.equal(deleted.status, 204);
+  assert.equal(missing.status, 404);
+});

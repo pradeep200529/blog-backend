@@ -67,6 +67,28 @@ export function createSupabaseDatabase({ url, serviceRoleKey }) {
       if (error) throw error;
       return this.getBlogById(data.id);
     },
+    async updateBlog({ id, authorId, title, content, excerpt }) {
+      const { data, error } = await client
+        .from('blogs')
+        .update({ title, content, excerpt })
+        .eq('id', id)
+        .eq('author_id', authorId)
+        .select('id')
+        .maybeSingle();
+      if (error) throw error;
+      return data ? this.getBlogById(data.id) : null;
+    },
+    async deleteBlog({ id, authorId }) {
+      const { data, error } = await client
+        .from('blogs')
+        .delete()
+        .eq('id', id)
+        .eq('author_id', authorId)
+        .select('id')
+        .maybeSingle();
+      if (error) throw error;
+      return Boolean(data);
+    },
     close() {},
   };
 }

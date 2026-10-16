@@ -119,6 +119,58 @@ export function createApp({ database, jwtSecret, clientOrigins = [] }) {
     }
   });
 
+  app.put('/api/blogs/:id', requireAuth(jwtSecret), async (request, response, next) => {
+    const id = request.params.id;
+    if (!/^(?:[1-9]\d*|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.test(id)) {
+      return response.status(404).json({ error: 'Blog post not found' });
+    }
+
+    const title = typeof request.body.title === 'string' ? request.body.title.trim() : '';
+    const content = typeof request.body.content === 'string' ? request.body.content.trim() : '';
+    const suppliedExcerpt = typeof request.body.excerpt === 'string'
+      ? request.body.excerpt.trim()
+      : '';
+
+    if (!title || title.length > 160 || !content || content.length > 50000) {
+      return response.status(400).json({ error: 'Title and content are required and must be within the size limits' });
+    }
+    if (suppliedExcerpt.length > 240) {
+      return response.status(400).json({ error: 'Excerpt must be 240 characters or fewer' });
+    }
+
+    try {
+      const blog = await database.updateBlog({
+        id: /^\d+$/.test(id) ? Number(id) : id,
+        authorId: request.user.id,
+        title,
+        content,
+        excerpt: suppliedExcerpt || content.slice(0, 240),
+      });
+      if (!blog) return response.status(404).json({ error: 'Blog post not found' });
+      return response.json({ blog });
+    } catch (error) {
+      return next(error);
+    }
+  });
+
+  app.delete('/api/blogs/:id', requireAuth(jwtSecret), async (request, response, next) => {
+    const id = request.params.id;
+    if (!/^(?:[1-9]\d*|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.test(id)) {
+      return response.status(404).json({ error: 'Blog post not found' });
+    }
+
+    try {
+      const deleted = await database.deleteBlog({
+        id: /^\d+$/.test(id) ? Number(id) : id,
+        authorId: request.user.id,
+      });
+      if (!deleted) return response.status(404).json({ error: 'Blog post not found' });
+      return response.status(204).end();
+    } catch (error) {
+      return next(error);
+    }
+  });
+
   app.post('/api/blogs', requireAuth(jwtSecret), async (request, response, next) => {
     const title = typeof request.body.title === 'string' ? request.body.title.trim() : '';
     const content = typeof request.body.content === 'string' ? request.body.content.trim() : '';

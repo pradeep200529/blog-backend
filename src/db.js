@@ -66,6 +66,20 @@ export function createDatabase(databasePath) {
       ).run(authorId, title, content, excerpt);
       return this.getBlogById(Number(result.lastInsertRowid));
     },
+    async updateBlog({ id, authorId, title, content, excerpt }) {
+      const result = database.prepare(`
+        UPDATE blogs SET title = ?, content = ?, excerpt = ?
+        WHERE id = ? AND author_id = ?
+      `).run(title, content, excerpt, id, authorId);
+      if (result.changes === 0) return null;
+      return this.getBlogById(id);
+    },
+    async deleteBlog({ id, authorId }) {
+      const result = database.prepare(
+        'DELETE FROM blogs WHERE id = ? AND author_id = ?',
+      ).run(id, authorId);
+      return result.changes > 0;
+    },
     close() {
       database.close();
     },
